@@ -13,7 +13,7 @@ from vector_database import populate
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    populate()
+    # populate()
     yield
 
 app = FastAPI(

@@ -1,53 +1,78 @@
 """
-Vector Database — Vectorize and store real-world documents using ChromaDB.
+Vector Database — Load and store Northwind policy documents from /files into ChromaDB.
+Chunks large .md files by section (##) so ChromaDB handles them correctly.
 Run this file directly to populate the vector DB and test searches.
 """
 
+import os
 from connectors.vector_connector import add, search, clear
 
-# ── Real-world documents ──────────────────────────────────────────────────────
-DOCS = [
-    "Apple Inc. reported a quarterly revenue of $94.8 billion in Q1 2024, driven by strong iPhone 15 sales.",
-    "The European Central Bank raised interest rates by 25 basis points to combat persistent inflation across the eurozone.",
-    "NASA's Artemis mission aims to return humans to the Moon by 2026, focusing on sustainable lunar exploration.",
-    "OpenAI released GPT-4o in May 2024, offering multimodal capabilities including vision, audio, and text.",
-    "The World Health Organization declared mpox a global health emergency for the second time in August 2024.",
-    "Tesla delivered 443,956 vehicles in Q1 2024, missing analyst expectations amid growing EV market competition.",
-    "The Paris 2024 Summer Olympics opened on July 26, featuring a ceremony held along the Seine River.",
-    "Amazon Web Services launched a new region in Malaysia, expanding its cloud infrastructure across Southeast Asia.",
-    "A 7.4 magnitude earthquake struck Taiwan in April 2024, causing significant damage in Hualien County.",
-    "The United Nations climate report warned that global temperatures are on track to exceed 1.5°C above pre-industrial levels.",
-]
+FILES_DIR = os.path.join(os.path.dirname(__file__), "files")
 
-IDS = [f"doc_{i}" for i in range(len(DOCS))]
+
+def chunk_by_section(text: str, min_length: int = 100) -> list[str]:
+    """Split markdown into sections by ## headings. Skips sections that are too short."""
+    chunks = []
+    current = []
+    for line in text.splitlines():
+        if line.startswith("## ") and current:
+            chunk = "\n".join(current).strip()
+            if len(chunk) >= min_length:
+                chunks.append(chunk)
+            current = [line]
+        else:
+            current.append(line)
+    if current:
+        chunk = "\n".join(current).strip()
+        if len(chunk) >= min_length:
+            chunks.append(chunk)
+    return chunks if chunks else [text]  # fallback: whole doc as one chunk
+
+
+def load_docs() -> tuple[list[str], list[str]]:
+    """Read all .md files, chunk by section. Returns (texts, ids)."""
+    texts, ids = [], []
+    for filename in sorted(os.listdir(FILES_DIR)):
+        if filename.endswith(".md"):
+            filepath = os.path.join(FILES_DIR, filename)
+            with open(filepath, "r", encoding="utf-8") as f:
+                content = f.read().strip()
+            doc_id = filename.replace(".md", "")
+            chunks = chunk_by_section(content)
+            for i, chunk in enumerate(chunks):
+                texts.append(chunk)
+                ids.append(f"{doc_id}_chunk{i}")
+            print(f"   📄 Loaded: {filename} → {len(chunks)} chunks")
+    return texts, ids
 
 
 def populate():
-    """Clear and re-populate the vector DB with all documents."""
+    """Clear and re-populate the vector DB with all chunked policy documents."""
+    print("📂 Loading policy documents from /files...\n")
+    texts, ids = load_docs()
     clear()
-    add(DOCS, ids=IDS)
-    print(f"✅ Vectorized and stored {len(DOCS)} documents.\n")
+    add(texts, ids=ids)
+    print(f"\n✅ Vectorized and stored {len(texts)} chunks from policy documents.\n")
 
 
 def demo_search():
-    """Run sample semantic searches against the vector DB."""
+    """Run sample compliance searches against the vector DB."""
     queries = [
-        "space exploration and moon landing",
-        "financial results and revenue",
-        "climate change and global warming",
-        "electric vehicles sales",
-        "health emergency and disease outbreak",
+        "insurance requirements for vendors",
+        "data encryption and security controls",
+        "travel expense reimbursement rules",
+        "purchase approval thresholds",
+        "breach notification requirements",
     ]
 
     for q in queries:
         print(f"🔍 Query: {q}")
         results = search(q, n=2)
         for r in results:
-            print(f"   [{r['id']}] score={r['score']:.4f} — {r['text'][:90]}...")
+            print(f"   [{r['id']}] score={r['score']:.4f} — {r['text'][:100]}...")
         print()
 
 
-if __name__ == "__main__":
-    populate()
-    demo_search()
-
+# if __name__ == "__main__":
+#     populate()
+#     demo_search()
