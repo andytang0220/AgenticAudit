@@ -23,11 +23,19 @@ def add(texts: list[str], ids: list[str] = None, collection: str = "default"):
     return ids
 
 
-def search(query: str, n: int = 3, collection: str = "default") -> list[dict]:
-    """Search for similar texts. Returns list of {id, text, score}."""
+RELEVANCE_THRESHOLD = 0.1 # Minimum relevance score (0–1). Docs below this are weak matches.
+
+def search(query: str, n: int = 3, collection: str = "default", min_score: float = RELEVANCE_THRESHOLD) -> list[dict]:
+    """
+    Search for similar texts. Returns list of {id, text, score}.
+    - Filters results below min_score threshold.
+    - Always returns at least 1 doc (the best match) even if it falls below threshold,
+      so the agent always has context to work with.
+    """
     col = get_collection(collection)
     results = col.query(query_texts=[query], n_results=n)
-    return [
+
+    all_results = [
         {"id": i, "text": d, "score": round(1 - s, 4)}
         for i, d, s in zip(
             results["ids"][0],
@@ -35,6 +43,12 @@ def search(query: str, n: int = 3, collection: str = "default") -> list[dict]:
             results["distances"][0],
         )
     ]
+
+    # Filter by threshold
+    filtered = [r for r in all_results if r["score"] >= min_score]
+
+    # Always return at least the top 1 result as fallback
+    return filtered if filtered else all_results[:1]
 
 
 def clear(collection: str = "default"):

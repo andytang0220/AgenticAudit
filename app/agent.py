@@ -3,7 +3,7 @@ RAG Agent — ChromaDB retrieval + DeepSeek LLM with structured prompts.
 """
 
 from pydantic import BaseModel
-from connectors.vector_connector import search
+from connectors.vector_connector import search, RELEVANCE_THRESHOLD
 from connectors.deepseek_connector import deepseek_chat
 
 
@@ -50,9 +50,12 @@ async def run_rag_agent(query: str, n_docs: int = 3) -> AgentResponse:
         )
 
     # Step 2: Format context block
+    low_relevance = all(d["score"] < RELEVANCE_THRESHOLD for d in docs)
     context = "\n\n".join(
         [f"[Doc {i+1}] (relevance: {d['score']:.2f})\n{d['text']}" for i, d in enumerate(docs)]
     )
+    if low_relevance:
+        context += "\n\n⚠️ Note: Retrieved documents have low relevance scores. Answer with caution."
 
     # Step 3: Build full prompt and call DeepSeek
     full_prompt = f"{SYSTEM_PROMPT}\n\n{USER_PROMPT_TEMPLATE.format(context=context, query=query)}"
