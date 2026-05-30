@@ -7,8 +7,8 @@ in `App.tsx`):
   the frontend: fetches `GET /api/v1/compliance-alerts` and renders
   severity-coded `ComplianceAlert`s with risk meters, frameworks, and evidence
   links.
-- **Intake** — upload documents (PDF/DOCX/TXT), tag each one's type, and submit
-  them for analysis.
+- **Intake** — upload documents (PDF/DOCX/TXT), tag each one's type, optionally
+  add a free-text analysis query, and submit them for analysis.
 
 > Scope note: `INTEGRATION.md` defines the frontend's role as the **Monitor**
 > dashboard only. The **Intake** page is an added surface; since the backend
@@ -60,7 +60,8 @@ POST /api/v1/ingest-scrape        (202 Accepted, one call per document)
     metadata: {
       filename, doc_type,
       encoding,                   // "utf-8" | "base64"
-      scraped_at                  // ISO 8601
+      scraped_at,                 // ISO 8601
+      query                       // optional free-text analysis instruction
     }
   }
 → { status, job_id, message, processing_url }

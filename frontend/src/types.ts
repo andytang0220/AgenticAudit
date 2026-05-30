@@ -39,6 +39,7 @@ export interface IngestMetadata {
   doc_type: DocType;
   encoding: "utf-8" | "base64";
   scraped_at: string; // ISO 8601
+  query?: string; // optional free-text instruction guiding the analysis
 }
 
 /** 202 response from POST /api/v1/ingest-scrape. */

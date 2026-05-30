@@ -16,6 +16,7 @@ type Phase = "editing" | "submitting" | "submitted";
 export default function IntakeView() {
   const [phase, setPhase] = useState<Phase>("editing");
   const [docs, setDocs] = useState<PendingDocument[]>([]);
+  const [query, setQuery] = useState("");
   const [rejections, setRejections] = useState<FileRejection[]>([]);
   const [result, setResult] = useState<IntakeResult | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -48,7 +49,8 @@ export default function IntakeView() {
     setPhase("submitting");
     setSubmitError(null);
     try {
-      const res = await submitIntake(docs);
+      const trimmed = query.trim();
+      const res = await submitIntake(docs, trimmed || undefined);
       setResult(res);
       setPhase("submitted");
     } catch (err) {
@@ -61,6 +63,7 @@ export default function IntakeView() {
 
   function reset() {
     setDocs([]);
+    setQuery("");
     setRejections([]);
     setResult(null);
     setSubmitError(null);
@@ -133,6 +136,24 @@ export default function IntakeView() {
           </div>
         </section>
       )}
+
+      {/* Analysis query (optional free-text instruction) */}
+      <section className="reveal reveal-d3 mt-8">
+        <SectionLabel>Analysis query</SectionLabel>
+        <p className="mb-3 -mt-1 text-sm text-ink-muted">
+          Optionally describe what to focus on — a question or instruction to
+          guide the review (e.g. “Check these against GDPR data-retention
+          rules”).
+        </p>
+        <textarea
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          disabled={busy}
+          rows={3}
+          placeholder="What should the analysis focus on? (optional)"
+          className="w-full resize-y rounded-sm border border-line bg-paper-raised px-3.5 py-2.5 text-sm leading-relaxed text-ink placeholder:text-ink-muted/50 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-60"
+        />
+      </section>
 
       {/* Submit */}
       <section className="reveal reveal-d4 mt-10 border-t border-line pt-6">

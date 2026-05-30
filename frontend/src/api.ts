@@ -22,15 +22,17 @@ const INGEST_ENDPOINT = "/api/v1/ingest-scrape";
  *
  * The backend (INTEGRATION.md) accepts one item per POST /api/v1/ingest-scrape
  * call and returns a job_id, so we fan out one request per document and
- * aggregate the job handles.
+ * aggregate the job handles. The optional free-text `query` is attached to
+ * each item's metadata to guide the analysis.
  */
 export async function submitIntake(
-  docs: PendingDocument[]
+  docs: PendingDocument[],
+  query?: string
 ): Promise<IntakeResult> {
   if (USE_MOCK) {
     return mockSubmit(docs);
   }
-  return realSubmit(docs);
+  return realSubmit(docs, query);
 }
 
 /**
@@ -80,14 +82,20 @@ async function mockSubmit(docs: PendingDocument[]): Promise<IntakeResult> {
 
 // ── Real path ───────────────────────────────────────────────────────
 
-async function realSubmit(docs: PendingDocument[]): Promise<IntakeResult> {
+async function realSubmit(
+  docs: PendingDocument[],
+  query?: string
+): Promise<IntakeResult> {
   // Fan out; one ingest call per document.
-  const submitted = await Promise.all(docs.map((d) => ingestOne(d)));
+  const submitted = await Promise.all(docs.map((d) => ingestOne(d, query)));
   return { submitted };
 }
 
-async function ingestOne(doc: PendingDocument): Promise<SubmittedDoc> {
-  const body = await buildIngestRequest(doc);
+async function ingestOne(
+  doc: PendingDocument,
+  query?: string
+): Promise<SubmittedDoc> {
+  const body = await buildIngestRequest(doc, query);
 
   const res = await fetch(INGEST_ENDPOINT, {
     method: "POST",
@@ -116,7 +124,8 @@ async function ingestOne(doc: PendingDocument): Promise<SubmittedDoc> {
 }
 
 async function buildIngestRequest(
-  doc: PendingDocument
+  doc: PendingDocument,
+  query?: string
 ): Promise<IngestRequest> {
   // .txt files go as UTF-8. Binary documents (PDF/DOCX) are sent
   // base64-encoded — we do NOT parse them client-side; the backend decodes and
@@ -145,6 +154,8 @@ async function buildIngestRequest(
       doc_type: doc.doc_type,
       encoding,
       scraped_at: new Date().toISOString(),
+      // Only include the query when the user actually entered one.
+      ...(query ? { query } : {}),
     },
   };
 }
