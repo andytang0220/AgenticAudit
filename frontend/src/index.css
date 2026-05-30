@@ -1,0 +1,107 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Editorial audit-dossier palette ──────────────────────────────────
+   Warm paper + ink + one restrained burnt-ochre accent. Single source of
+   truth; Tailwind themes its color tokens off these variables. */
+:root {
+  --paper: #f4f1e9; /* warm off-white background */
+  --paper-raised: #fbf9f3; /* cards / dropzone */
+  --ink: #1b1a15; /* near-black warm text */
+  --ink-muted: #6b6553; /* secondary text */
+  --line: rgba(27, 26, 21, 0.12); /* hairline borders/rules */
+  --accent: #9a5b2c; /* burnt ochre — primary action, active states */
+  --accent-soft: rgba(154, 91, 44, 0.08);
+  --danger: #8b2635; /* validation errors only */
+  --danger-soft: rgba(139, 38, 53, 0.07);
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    background-color: var(--paper);
+    color: var(--ink);
+    font-family: "Hanken Grotesk", sans-serif;
+    font-feature-settings: "ss01";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Native form controls inherit the paper aesthetic. */
+  select,
+  textarea,
+  input {
+    font-family: inherit;
+    color: inherit;
+  }
+}
+
+/* Keyframes defined here (not only in tailwind.config) so they always ship —
+   the `.reveal` utility below uses them via raw CSS, not an `animate-*` class,
+   so Tailwind would otherwise tree-shake them out and leave elements at
+   opacity:0. */
+@keyframes reveal-up {
+  0% {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@layer utilities {
+  /* Faint paper grain via layered gradients — depth without shadows. */
+  .bg-grain {
+    background-image:
+      radial-gradient(
+        circle at 15% 12%,
+        rgba(154, 91, 44, 0.04),
+        transparent 38%
+      ),
+      radial-gradient(
+        circle at 85% 88%,
+        rgba(27, 26, 21, 0.03),
+        transparent 42%
+      );
+  }
+
+  /* Staggered page-load reveal helpers. */
+  .reveal {
+    opacity: 0;
+    animation: reveal-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+  .reveal-d1 {
+    animation-delay: 0.05s;
+  }
+  .reveal-d2 {
+    animation-delay: 0.16s;
+  }
+  .reveal-d3 {
+    animation-delay: 0.28s;
+  }
+  .reveal-d4 {
+    animation-delay: 0.4s;
+  }
+}
+
+/* Custom monospaced caret + tidy native select arrow removal handled inline. */
+::selection {
+  background: var(--accent-soft);
+}
