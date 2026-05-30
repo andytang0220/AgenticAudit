@@ -57,12 +57,11 @@ export default function Dropzone({ onFiles, disabled }: DropzoneProps) {
       aria-disabled={disabled}
       className={[
         "group relative flex cursor-pointer flex-col items-center justify-center",
-        "rounded-sm px-8 py-14 text-center transition-colors duration-200",
+        "rounded-lg px-8 py-10 text-center transition-all duration-200",
         "border border-dashed",
-        // Inset paper feel: raised fill against a hairline dashed frame.
         dragging
-          ? "border-accent bg-[var(--accent-soft)]"
-          : "border-line bg-paper-raised hover:border-ink-muted/40",
+          ? "border-accent bg-accent/10 scale-[1.01]"
+          : "border-line bg-paper-raised hover:border-accent/40 hover:bg-paper-card",
         disabled ? "pointer-events-none opacity-50" : "",
       ].join(" ")}
     >
@@ -82,10 +81,10 @@ export default function Dropzone({ onFiles, disabled }: DropzoneProps) {
 
       <div
         className={[
-          "mb-4 flex h-12 w-12 items-center justify-center rounded-full border transition-colors",
+          "mb-4 flex h-12 w-12 items-center justify-center rounded-full border transition-all",
           dragging
-            ? "border-accent text-accent"
-            : "border-line text-ink-muted group-hover:text-ink",
+            ? "border-accent bg-accent/15 text-accent scale-110"
+            : "border-line bg-paper-card text-ink-muted group-hover:border-accent/40 group-hover:text-accent",
         ].join(" ")}
       >
         {dragging ? (
@@ -95,17 +94,17 @@ export default function Dropzone({ onFiles, disabled }: DropzoneProps) {
         )}
       </div>
 
-      <p className="font-display text-lg text-ink">
-        {dragging ? "Release to add documents" : "Set your documents here"}
+      <p className="text-sm font-semibold text-ink">
+        {dragging ? "Release to add documents" : "Drop files here"}
       </p>
-      <p className="mt-1.5 text-sm text-ink-muted">
-        Drag &amp; drop, or{" "}
-        <span className="text-accent underline decoration-line underline-offset-4">
+      <p className="mt-1 text-xs text-ink-muted">
+        or{" "}
+        <span className="text-accent underline underline-offset-4">
           browse to upload
         </span>
       </p>
-      <p className="mt-4 font-mono text-[11px] uppercase tracking-wider text-ink-muted/70">
-        PDF · DOCX · TXT — 10 MB max each
+      <p className="mt-3 font-mono text-[10px] uppercase tracking-wider text-ink-muted/50">
+        PDF · TXT · MD — 10 MB max
       </p>
     </div>
   );
