@@ -4,8 +4,6 @@ from vector_database import populate
 
 if __name__ == '__main__':
     # ── Vectorize & store docs ────────────────────────────────────────────────
-    populate()
-
     # ── Search examples ───────────────────────────────────────────────────────
     queries = [
         "space exploration and moon landing",

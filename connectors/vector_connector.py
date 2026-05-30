@@ -4,8 +4,10 @@ No extra model downloads needed — just: pip install chromadb
 """
 
 import chromadb
+import os
 
-_client = chromadb.Client()
+_DB_PATH = os.path.join(os.path.dirname(__file__), "..", "chroma_db")
+_client = chromadb.PersistentClient(path=_DB_PATH)
 
 
 def get_collection(name: str = "default"):
