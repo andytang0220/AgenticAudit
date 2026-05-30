@@ -3,9 +3,12 @@ FastAPI app — RAG-powered agent endpoint.
 Run: uvicorn app.api:app --reload
 """
 
+from __future__ import annotations
+
 import uuid
 from collections import OrderedDict
 from contextlib import asynccontextmanager
+from typing import Optional
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
@@ -13,7 +16,6 @@ from pydantic import BaseModel
 from app.agent import run_rag_agent, AgentResponse
 from app.loaders import chunk, extract_text
 from connectors import vector_connector as vc
-from vector_database import populate
 
 # Uploaded documents go in their own collection so they don't clobber the
 # "default" corpus that populate() seeds on startup.
@@ -80,9 +82,9 @@ async def agent_query(request: QueryRequest):
 # ── Document upload ──────────────────────────────────────────────────────────
 @app.post("/documents", response_model=UploadResponse, status_code=201)
 async def upload_document(
-    file: UploadFile | None = File(default=None),
-    text: str | None = Form(default=None),
-    name: str | None = Form(default=None),
+    file: Optional[UploadFile] = File(default=None),
+    text: Optional[str] = Form(default=None),
+    name: Optional[str] = Form(default=None),
 ):
     """Upload a document by file OR raw text; chunk it and store in the vector DB."""
     if file is not None:

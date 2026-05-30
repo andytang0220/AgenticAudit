@@ -1,67 +1,120 @@
 """
-RAG Agent — ChromaDB retrieval + DeepSeek LLM with structured prompts.
+Two-step RAG Agent:
+  Step 1a — Semantic search on ChromaDB (internal policy docs)
+  Step 1b — Live web search via Brightdata SERP API
+  Step 2  — Combine both into one structured prompt → DeepSeek → final answer
 """
 
+import asyncio
+import logging
+import time
 from pydantic import BaseModel
 from connectors.vector_connector import search, RELEVANCE_THRESHOLD
 from connectors.deepseek_connector import deepseek_chat
+from connectors.brightdata_connector import fetch_web_results
+
+# ── Logger ─────────────────────────────────────────────────────────────────────
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger("agent")
 
 
 # ── Prompts ────────────────────────────────────────────────────────────────────
-SYSTEM_PROMPT = """You are an intelligent research assistant with access to a curated knowledge base.
+SYSTEM_PROMPT = """You are an expert compliance and policy analyst assistant.
+
+You have access to two sources of information:
+1. **Internal Policy Documents** — official company policy docs retrieved from the knowledge base.
+2. **Live Web Intelligence** — real-time compliance data fetched from the web.
 
 Your responsibilities:
-- Answer questions accurately using ONLY the provided context documents.
-- Be concise, clear, and factual in your responses.
-- If the context does not contain enough information to answer, explicitly say: "The knowledge base does not contain sufficient information on this topic."
-- Never fabricate facts or use knowledge outside the provided context.
-- Cite which document (e.g. Doc 1, Doc 2) your answer is based on."""
+- Synthesize both sources to give a comprehensive, accurate answer.
+- Prioritize internal policy documents for company-specific rules.
+- Use web results to enrich with current regulations, trends, or external context.
+- Always cite which source supports each point (e.g. "Per internal policy..." or "According to recent web results...").
+- Be concise, structured, and factual.
+- If a source lacks relevant info, say so — do not fabricate."""
 
-USER_PROMPT_TEMPLATE = """## Retrieved Context
-{context}
+USER_PROMPT_TEMPLATE = """## SOURCE 1 — Internal Policy Documents
+{internal_context}
+
+---
+
+## SOURCE 2 — Live Web Intelligence
+{web_context}
+
+---
 
 ## User Question
 {query}
 
 ## Instructions
-Answer the question based solely on the context above. Reference the relevant document(s) in your answer."""
+Using BOTH sources above, provide a comprehensive and well-structured answer.
+Reference specific sources where applicable."""
 
 
 # ── Response schema ────────────────────────────────────────────────────────────
 class AgentResponse(BaseModel):
     answer: str
-    sources: list[str]
+    internal_sources: list[str]
+    web_results_used: bool
 
 
 # ── Agent ──────────────────────────────────────────────────────────────────────
 async def run_rag_agent(query: str, n_docs: int = 3) -> AgentResponse:
     """
-    RAG pipeline:
-    1. Semantic search on ChromaDB
-    2. Build structured prompt with retrieved context
-    3. Call DeepSeek and return grounded answer
+    Two-step agent pipeline:
+    Step 1: Run ChromaDB search + Brightdata web search in parallel
+    Step 2: Combine results into one prompt → DeepSeek → final answer
     """
-    # Step 1: Retrieve relevant docs
-    docs = search(query, n=n_docs)
-    if not docs:
-        return AgentResponse(
-            answer="The knowledge base does not contain sufficient information on this topic.",
-            sources=[],
+    start = time.time()
+    logger.info(f"🚀 New query received: '{query}' (n_docs={n_docs})")
+
+    # Step 1: Run both searches in parallel
+    logger.info("⚡ Step 1: Running ChromaDB + Brightdata searches in parallel...")
+    step1_start = time.time()
+    loop = asyncio.get_event_loop()
+    db_task = loop.run_in_executor(None, search, query, n_docs)
+    web_task = loop.run_in_executor(None, fetch_web_results, query)
+    docs, web_results = await asyncio.gather(db_task, web_task)
+    logger.info(f"✅ Step 1 complete in {time.time() - step1_start:.2f}s — "
+                f"ChromaDB: {len(docs)} doc(s), Brightdata: {'success' if 'error' not in web_results.lower() else 'failed'}")
+
+    # Log ChromaDB results
+    for i, d in enumerate(docs):
+        logger.info(f"   📄 [Doc {i+1}] id={d['id']} score={d['score']:.4f}")
+
+    # Log Brightdata results preview (first 300 chars)
+    web_preview = web_results[:300].replace("\n", " ").strip()
+    logger.info(f"   🌐 Brightdata preview: {web_preview}...")
+
+    # Step 2a: Format internal policy context
+    if docs:
+        low_relevance = all(d["score"] < RELEVANCE_THRESHOLD for d in docs)
+        if low_relevance:
+            logger.warning(f"⚠️  All docs below relevance threshold ({RELEVANCE_THRESHOLD}) — low confidence retrieval")
+        internal_context = "\n\n".join(
+            [f"[Doc {i+1}] (relevance: {d['score']:.2f}) [{d['id']}]\n{d['text']}" for i, d in enumerate(docs)]
         )
+        if low_relevance:
+            internal_context += "\n\n⚠️ Note: These documents have low relevance scores — use with caution."
+    else:
+        logger.warning("⚠️  No internal documents found for query")
+        internal_context = "No relevant internal documents found."
 
-    # Step 2: Format context block
-    low_relevance = all(d["score"] < RELEVANCE_THRESHOLD for d in docs)
-    context = "\n\n".join(
-        [f"[Doc {i+1}] (relevance: {d['score']:.2f})\n{d['text']}" for i, d in enumerate(docs)]
-    )
-    if low_relevance:
-        context += "\n\n⚠️ Note: Retrieved documents have low relevance scores. Answer with caution."
-
-    # Step 3: Build full prompt and call DeepSeek
-    full_prompt = f"{SYSTEM_PROMPT}\n\n{USER_PROMPT_TEMPLATE.format(context=context, query=query)}"
+    # Step 2b: Build full prompt and call DeepSeek
+    logger.info("🤖 Step 2: Sending combined prompt to DeepSeek...")
+    step2_start = time.time()
+    full_prompt = f"{SYSTEM_PROMPT}\n\n{USER_PROMPT_TEMPLATE.format(internal_context=internal_context, web_context=web_results, query=query)}"
     answer = deepseek_chat(full_prompt)
+    logger.info(f"✅ Step 2 complete in {time.time() - step2_start:.2f}s — answer length: {len(answer)} chars")
+
+    logger.info(f"🏁 Total pipeline time: {time.time() - start:.2f}s")
 
     return AgentResponse(
         answer=answer,
-        sources=[f"[Doc {i+1}] {d['text'][:100]}..." for i, d in enumerate(docs)],
+        internal_sources=[f"[Doc {i+1}] {d['id']} (score: {d['score']:.2f})" for i, d in enumerate(docs)],
+        web_results_used="error" not in web_results.lower(),
     )
