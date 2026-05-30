@@ -3,12 +3,22 @@ FastAPI app — RAG-powered agent endpoint.
 Run: uvicorn app.api:app --reload
 """
 
+import uuid
+from collections import OrderedDict
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException
+
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from app.agent import run_rag_agent, AgentResponse
+from app.loaders import chunk, extract_text
+from connectors import vector_connector as vc
 from vector_database import populate
+
+# Uploaded documents go in their own collection so they don't clobber the
+# "default" corpus that populate() seeds on startup.
+DOCUMENTS_COLLECTION = "documents"
+MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20 MB
 
 
 @asynccontextmanager
@@ -24,10 +34,26 @@ app = FastAPI(
 )
 
 
-# ── Request schema ─────────────────────────────────────────────────────────────
+# ── Schemas ──────────────────────────────────────────────────────────────────
 class QueryRequest(BaseModel):
     query: str
     n_docs: int = 3
+
+
+class UploadResponse(BaseModel):
+    doc_id: str
+    name: str
+    content_type: str
+    num_chunks: int
+    size: int
+
+
+class DocumentOut(BaseModel):
+    doc_id: str
+    name: str
+    content_type: str
+    num_chunks: int
+    size: int
 
 
 # ── Routes ─────────────────────────────────────────────────────────────────────
@@ -49,4 +75,80 @@ async def agent_query(request: QueryRequest):
 
     response = await run_rag_agent(request.query, n_docs=request.n_docs)
     return response
+
+
+# ── Document upload ──────────────────────────────────────────────────────────
+@app.post("/documents", response_model=UploadResponse, status_code=201)
+async def upload_document(
+    file: UploadFile | None = File(default=None),
+    text: str | None = Form(default=None),
+    name: str | None = Form(default=None),
+):
+    """Upload a document by file OR raw text; chunk it and store in the vector DB."""
+    if file is not None:
+        raw = await file.read()
+        if len(raw) > MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail="File too large.")
+        doc_name = name or file.filename or "untitled"
+        body = extract_text(file.filename or doc_name, raw)
+        content_type = (file.filename or "").rsplit(".", 1)[-1].lower() or "txt"
+        size = len(raw)
+    elif text and text.strip():
+        body = text.strip()
+        if len(body.encode("utf-8")) > MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail="Text too large.")
+        doc_name = name or "untitled"
+        content_type = "text"
+        size = len(body.encode("utf-8"))
+    else:
+        raise HTTPException(
+            status_code=400, detail="Provide a 'file' upload or a 'text' field."
+        )
+
+    doc_id = uuid.uuid4().hex
+    pieces = chunk(body)
+    ids = [f"{doc_id}:{i}" for i in range(len(pieces))]
+    metadatas = [
+        {
+            "doc_id": doc_id,
+            "name": doc_name,
+            "content_type": content_type,
+            "size": size,
+            "chunk": i,
+        }
+        for i in range(len(pieces))
+    ]
+    vc.add(pieces, ids=ids, metadatas=metadatas, collection=DOCUMENTS_COLLECTION)
+
+    return UploadResponse(
+        doc_id=doc_id,
+        name=doc_name,
+        content_type=content_type,
+        num_chunks=len(pieces),
+        size=size,
+    )
+
+
+@app.get("/documents", response_model=list[DocumentOut])
+def list_documents():
+    """List uploaded documents (deduped by doc_id from chunk metadata)."""
+    grouped: "OrderedDict[str, list[dict]]" = OrderedDict()
+    for row in vc.list_chunks(DOCUMENTS_COLLECTION):
+        meta = row.get("metadata") or {}
+        doc_id = meta.get("doc_id", row["id"])
+        grouped.setdefault(doc_id, []).append(row)
+
+    out = []
+    for doc_id, rows in grouped.items():
+        meta = rows[0].get("metadata") or {}
+        out.append(
+            DocumentOut(
+                doc_id=doc_id,
+                name=meta.get("name", doc_id),
+                content_type=meta.get("content_type", "text"),
+                num_chunks=len(rows),
+                size=int(meta.get("size", sum(len(r["text"]) for r in rows))),
+            )
+        )
+    return out
 

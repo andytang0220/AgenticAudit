@@ -16,13 +16,38 @@ def get_collection(name: str = "default"):
     return _client.get_or_create_collection(name)
 
 
-def add(texts: list[str], ids: list[str] = None, collection: str = "default"):
-    """Upsert texts into the vector store (adds or updates existing docs)."""
+def add(
+    texts: list[str],
+    ids: list[str] = None,
+    metadatas: list[dict] = None,
+    collection: str = "default",
+):
+    """Upsert texts (and optional per-text metadata) into the vector store.
+
+    Uses upsert to avoid stale UUID issues from delete+add.
+    """
     col = get_collection(collection)
     if ids is None:
         ids = [str(i) for i in range(len(texts))]
-    col.upsert(documents=texts, ids=ids)  # upsert avoids stale UUID issues from delete+add
+    kwargs = {"documents": texts, "ids": ids}
+    if metadatas is not None:
+        kwargs["metadatas"] = metadatas
+    col.upsert(**kwargs)
     return ids
+
+
+def list_chunks(collection: str = "default") -> list[dict]:
+    """Return every stored chunk as {id, text, metadata} (no embeddings)."""
+    col = get_collection(collection)
+    data = col.get(include=["documents", "metadatas"])
+    return [
+        {"id": i, "text": d, "metadata": m or {}}
+        for i, d, m in zip(
+            data["ids"],
+            data["documents"],
+            data.get("metadatas") or [None] * len(data["ids"]),
+        )
+    ]
 
 
 def search(query: str, n: int = 3, collection: str = "default", min_score: float = RELEVANCE_THRESHOLD) -> list[dict]:

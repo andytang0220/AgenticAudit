@@ -1,0 +1,7 @@
+# RAG backend (app/) + shared connectors
+chromadb>=0.5
+fastapi>=0.110
+uvicorn[standard]>=0.29
+python-multipart>=0.0.9
+pypdf>=4.0
+requests>=2.31
