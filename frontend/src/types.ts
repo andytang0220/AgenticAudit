@@ -1,4 +1,15 @@
-// ── Intake data contract ────────────────────────────────────────────
+// ── Agent query contract ────────────────────────────────────────────
+export interface AgentQueryRequest {
+  query: string;
+  n_docs?: number;
+}
+
+export interface AgentQueryResponse {
+  answer: string;
+  internal_sources: string[];
+  web_results_used: boolean;
+}
+
 // These types ARE the contract between the intake page and the backend.
 // Defined once here; imported everywhere. Do not add fields outside this
 // file without also updating the FormData assembly in src/api.ts.

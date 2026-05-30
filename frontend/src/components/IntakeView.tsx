@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
-import { AlertTriangle, Loader2, ScanLine } from "lucide-react";
-import type { DocType, IntakeResult, PendingDocument } from "../types";
-import { submitIntake } from "../api";
+import { AlertTriangle, CheckCircle2, Globe, Loader2, ScanLine } from "lucide-react";
+import type { AgentQueryResponse, DocType, IntakeResult, PendingDocument } from "../types";
+import { runAgentQuery, submitIntake } from "../api";
 import {
   duplicateSuffixes,
   validateFiles,
@@ -20,10 +20,12 @@ export default function IntakeView() {
   const [rejections, setRejections] = useState<FileRejection[]>([]);
   const [result, setResult] = useState<IntakeResult | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [agentResponse, setAgentResponse] = useState<AgentQueryResponse | null>(null);
+  const [agentLoading, setAgentLoading] = useState(false);
 
   const busy = phase === "submitting";
   const suffixes = useMemo(() => duplicateSuffixes(docs), [docs]);
-  const canSubmit = docs.length > 0 && !busy;
+  const canSubmit = query.trim().length > 0 && !busy;
 
   // ── doc mutations ──────────────────────────────────────────────────
   const addFiles = useCallback((files: File[]) => {
@@ -46,18 +48,19 @@ export default function IntakeView() {
   // ── submit flow ────────────────────────────────────────────────────
   async function runAnalysis() {
     if (!canSubmit) return;
-    setPhase("submitting");
+    setAgentLoading(true);
+    setAgentResponse(null);
     setSubmitError(null);
     try {
       const trimmed = query.trim();
-      const res = await submitIntake(docs, trimmed || undefined);
-      setResult(res);
-      setPhase("submitted");
+      const res = await runAgentQuery(trimmed);
+      setAgentResponse(res);
     } catch (err) {
       setSubmitError(
-        err instanceof Error ? err.message : "Submission failed. Try again."
+        err instanceof Error ? err.message : "Analysis failed. Try again."
       );
-      setPhase("editing");
+    } finally {
+      setAgentLoading(false);
     }
   }
 
@@ -67,6 +70,7 @@ export default function IntakeView() {
     setRejections([]);
     setResult(null);
     setSubmitError(null);
+    setAgentResponse(null);
     setPhase("editing");
   }
 
@@ -165,28 +169,26 @@ export default function IntakeView() {
         )}
         <div className="flex flex-wrap items-center justify-between gap-4">
           <p className="text-sm text-ink-muted">
-            {docs.length === 0
-              ? "Add at least one document to begin."
-              : `Ready to analyze ${docs.length} document${
-                  docs.length === 1 ? "" : "s"
-                }.`}
+            {query.trim().length === 0
+              ? "Enter a query to begin analysis."
+              : "Ready to run analysis."}
           </p>
           <button
             type="button"
-            disabled={!canSubmit}
+            disabled={!canSubmit || agentLoading}
             onClick={runAnalysis}
             className={[
               "inline-flex items-center gap-2 rounded-sm px-6 py-3 text-sm font-semibold",
               "transition-all focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-paper",
-              canSubmit
+              canSubmit && !agentLoading
                 ? "bg-accent text-paper hover:opacity-90"
                 : "cursor-not-allowed border border-line bg-paper text-ink-muted/60",
             ].join(" ")}
           >
-            {busy ? (
+            {agentLoading ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />
-                Submitting…
+                Analysing…
               </>
             ) : (
               <>
@@ -197,6 +199,55 @@ export default function IntakeView() {
           </button>
         </div>
       </section>
+
+      {/* Agent response */}
+      {agentResponse && (
+        <section className="reveal mt-10 border-t border-line pt-6">
+          <SectionLabel>Analysis result</SectionLabel>
+
+          {/* Answer */}
+          <div className="rounded-sm border border-line bg-paper-raised px-5 py-4">
+            <p className="whitespace-pre-wrap text-sm leading-relaxed text-ink">
+              {agentResponse.answer}
+            </p>
+          </div>
+
+          {/* Sources */}
+          {agentResponse.internal_sources.length > 0 && (
+            <div className="mt-4">
+              <SectionLabel>Internal sources</SectionLabel>
+              <ul className="space-y-1">
+                {agentResponse.internal_sources.map((src, i) => (
+                  <li key={i} className="font-mono text-[11px] text-ink-muted">
+                    {src}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Web results badge */}
+          <div className="mt-4 flex items-center gap-2">
+            <Globe className="h-3.5 w-3.5 text-ink-muted" strokeWidth={1.75} />
+            <span className="font-mono text-[11px] text-ink-muted">
+              Web intelligence:{" "}
+              <span className={agentResponse.web_results_used ? "text-accent" : "text-danger"}>
+                {agentResponse.web_results_used ? "used" : "unavailable"}
+              </span>
+            </span>
+          </div>
+
+          {/* Reset */}
+          <button
+            type="button"
+            onClick={reset}
+            className="mt-6 inline-flex items-center gap-2 rounded-sm border border-line px-4 py-2 text-sm text-ink-muted transition-colors hover:border-accent hover:text-accent"
+          >
+            <CheckCircle2 className="h-4 w-4" strokeWidth={1.75} />
+            New analysis
+          </button>
+        </section>
+      )}
     </Shell>
   );
 }

@@ -1,4 +1,6 @@
 import type {
+  AgentQueryRequest,
+  AgentQueryResponse,
   AlertsResponse,
   ComplianceAlert,
   IngestRequest,
@@ -14,8 +16,31 @@ import type {
 export const USE_MOCK =
   (import.meta.env.VITE_USE_MOCK ?? "true").toLowerCase() !== "false";
 
+const AGENT_ENDPOINT = "http://localhost:8000/agent/query";
+
 // Real backend contract per repo INTEGRATION.md.
 const INGEST_ENDPOINT = "/api/v1/ingest-scrape";
+
+/**
+ * Send a query to the backend RAG agent (/agent/query).
+ * Step 1: ChromaDB semantic search + Brightdata web search (parallel)
+ * Step 2: Combined prompt → DeepSeek → final answer
+ */
+export async function runAgentQuery(
+  query: string,
+  n_docs = 3
+): Promise<AgentQueryResponse> {
+  const res = await fetch(AGENT_ENDPOINT, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query, n_docs } as AgentQueryRequest),
+  });
+  if (!res.ok) {
+    const detail = await res.text();
+    throw new Error(`Agent query failed (${res.status}): ${detail}`);
+  }
+  return (await res.json()) as AgentQueryResponse;
+}
 
 /**
  * Submit every uploaded document for compliance analysis.
